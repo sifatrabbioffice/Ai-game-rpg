@@ -43,26 +43,32 @@ jobs:
       - name: Build for iOS (Debug)
         run: |
           xcodebuild \
-            -scheme RPGGame \
-            -configuration Debug \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            -verbose \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
-
-      - name: Build for iOS (Release)
-        run: |
-          xcodebuild \
+            -project ios/RPGGame.xcodeproj \
             -scheme RPGGame \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
-            -verbose \
-            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            clean build
+
+
+      - name: Build for iOS (Release)
+        run: |
+          xcodebuild \
+            -project ios/RPGGame.xcodeproj \
+            -scheme RPGGame \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            clean build
+
 
       - name: Generate IPA
         run: |
