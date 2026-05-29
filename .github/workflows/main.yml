@@ -42,7 +42,7 @@ jobs:
       - name: Compile Unit & Integration Tests (Debug)
         run: |
           xcodebuild \
-            -project ios/RPGGame.xcodeproj \
+            -workspace RPGGame.xcodeproj \
             -scheme RPGGame \
             -configuration Debug \
             -sdk iphonesimulator \
