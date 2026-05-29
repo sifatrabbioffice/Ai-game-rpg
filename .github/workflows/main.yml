@@ -228,7 +228,7 @@ jobs:
     
     steps:
       - name: Download IPA
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: iOS-build-artifacts
           path: ./
