@@ -293,7 +293,7 @@ jobs:
           EOF
 
       - name: Upload Instructions
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@4
         with:
           name: sideload-instructions
           path: SIDELOAD_INSTRUCTIONS.md
