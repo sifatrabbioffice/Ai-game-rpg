@@ -23,6 +23,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ---- ADD THIS TEMPORARY DIAGNOSTIC STEP ----
+      - name: Debug Repository Structure
+        run: |
+          echo "=== Current Working Directory ==="
+          pwd
+          echo "=== Top-Level Directory Contents ==="
+          ls -la
+          echo "=== Locating Xcode Projects ==="
+          find . -name "*.xcodeproj" -o -name "*.xcworkspace"
+      # --------------------------------------------
+
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
