@@ -34,61 +34,11 @@ jobs:
           sudo xcode-select --switch /Applications/Xcode_15.3.app/Contents/Developer
           xcodebuild -version
 
-      - name: Generate Xcode Project Struct On-The-Fly
-        run: |
-          echo "🔨 Generating missing Xcode project structure..."
-          
-          # সুইফট ফাইলগুলোর সঠিক লোকেশন খুঁজে বের করা বা তৈরি করা
-          mkdir -p RPGGame/Sources
-          
-          # যদি মূল ফাইলগুলো বাইরে থাকে তবে সেগুলোকে সোর্স ফোল্ডারে মুভ করা
-          cp *.swift RPGGame/Sources/ 2>/dev/null || true
-          if [ -d "RPGGame" ]; then
-            cp RPGGame/*.swift RPGGame/Sources/ 2>/dev/null || true
-          fi
-          
-          # একটি সুইফট প্যাকেজ ম্যানিফেস্ট তৈরি করা যা এক্সকোড সরাসরি রিড করতে পারে
-          cat << 'EOF' > Package.swift
-          // swift-tools-version: 5.9
-          import PackageDescription
-
-          let package = Package(
-              name: "RPGGame",
-              platforms: [.iOS(.v15)],
-              products: [
-                  .library(name: "RPGGame", targets: ["RPGGame"])
-              ],
-              targets: [
-                  .target(
-                      name: "RPGGame",
-                      path: "RPGGame/Sources"
-                  )
-              ]
-          )
-          EOF
-          
-          # প্যাকেজ থেকে সরাসরি .xcodeproj জেনারেট করা
-          swift package generate-xcodeproj --output RPGGame.xcodeproj
-          echo "✅ Successfully generated RPGGame.xcodeproj!"
-
-      - name: Build for iOS (Debug)
-        run: |
-          xcodebuild \
-            -project RPGGame.xcodeproj \
-            -scheme RPGGame-Package \
-            -configuration Debug \
-            -sdk iphoneos \
-            -derivedDataPath .build \
-            -verbose \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
-
       - name: Build for iOS (Release)
         run: |
           xcodebuild \
             -project RPGGame.xcodeproj \
-            -scheme RPGGame-Package \
+            -scheme RPGGame \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath .build \
@@ -100,20 +50,13 @@ jobs:
       - name: Create Sideload IPA
         run: |
           mkdir -p artifacts
-          APP_PATH=$(find .build/Build/Products/Release-iphoneos -name "*.app" -type d | head -n 1)
-          
-          # যদি জেনারেট হওয়া অ্যাপ ফাইল সরাসরি না পাওয়া যায়, তবে ম্যানুয়ালি পেলোড স্ট্রাকচার তৈরি করা
+          APP_PATH=$(find .build/Build/Products/Release-iphoneos -name "RPGGame.app" -type d | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            mkdir -p Payload/RPGGame.app
-            cp -r .build/Build/Products/Release-iphoneos/PackageFrameworks/* Payload/RPGGame.app/ 2>/dev/null || true
-            cp -r .build/Build/Products/Release-iphoneos/*.bundle Payload/RPGGame.app/ 2>/dev/null || true
-            # এক্সিকিউটেবল ফাইল কপি করা
-            find .build/Build/Products/Release-iphoneos -type f -maxdepth 2 -not -name "*.plist" -exec cp {} Payload/RPGGame.app/RPGGame \; 2>/dev/null || true
-          else
-            mkdir -p Payload
-            cp -r "$APP_PATH" Payload/
+            echo "❌ Error: RPGGame.app not found in build directory!"
+            exit 1
           fi
-          
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
           zip -r -q artifacts/RPGGame-sideload.ipa Payload
           rm -rf Payload
 
@@ -122,21 +65,3 @@ jobs:
         with:
           name: iOS-build-artifacts
           path: artifacts/RPGGame-sideload.ipa
-
-      - name: Generate Sideload Instructions
-        run: |
-          cat << 'EOF' > SIDELOAD_INSTRUCTIONS.md
-          # 🎮 Epic RPG Quest - Sideloading Ready!
-          
-          The project structure was successfully auto-generated and compiled into an iOS IPA.
-          
-          ## Installation:
-          1. Download `RPGGame-sideload.ipa` from the Artifacts section.
-          2. Install using Sideloadly (https://sideloadly.io/) or AltStore (https://altstore.io/).
-          EOF
-
-      - name: Upload Instructions
-        uses: actions/upload-artifact@v4
-        with:
-          name: sideload-instructions
-          path: SIDELOAD_INSTRUCTIONS.md
