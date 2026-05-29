@@ -1,5 +1,7 @@
 name: iOS RPG Game Build & Sideload
 
+on:name: iOS RPG Game Build & Sideload
+
 on:
   push:
     branches: [ main, develop ]
@@ -112,6 +114,314 @@ jobs:
       - name: Upload Build Artifacts
         if: success()
         uses: actions/upload-artifact@v3
+        with:
+          name: iOS-build-artifacts
+          path: |
+            build/RPGGame.xcarchive
+            build/ipa/RPGGame-sideload.ipa
+          retention-days: 30
+
+      - name: Create Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/ipa/RPGGame-sideload.ipa
+            build/RPGGame.xcarchive
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify Slack on Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          payload: |
+            {
+              "text": "iOS RPG Game Build Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "❌ *Build Failed*\nRepository: ${{ github.repository }}\nBranch: ${{ github.ref }}\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+
+  code-analysis:
+    name: Code Analysis
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run SwiftLint
+        run: |
+          brew install swiftlint
+          swiftlint
+
+      - name: Generate SBOM
+        run: |
+          xcodebuild \
+            -scheme RPGGame \
+            -configuration Release \
+            -sdk iphoneos \
+            -json | grep -o '"dependencies":[^}]*}' > sbom.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v3
+        with:
+          name: sbom
+          path: sbom.json
+
+  security-scan:
+    name: Security Scanning
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/swift
+          generateSarif: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+
+  performance-test:
+    name: Performance Tests
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_15.3.app/Contents/Developer
+
+      - name: Run Performance Tests
+        run: |
+          xcodebuild \
+            -scheme RPGGame \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            test \
+            -only-testing RPGGameTests/PerformanceTests \
+            -verbose || true
+
+  sideload-guide:
+    name: Generate Sideload Instructions
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+      - name: Download IPA
+        uses: actions/download-artifact@v3
+        with:
+          name: iOS-build-artifacts
+          path: ./
+
+      - name: Generate Instructions
+        run: |
+          cat > SIDELOAD_INSTRUCTIONS.md << 'EOF'
+          # iOS RPG Game - Sideload Installation Guide
+          
+          ## Method 1: Using AltStore (Recommended)
+          
+          1. Download and install [AltStore](https://altstore.io/) on your Mac
+          2. Download the IPA file from the latest release
+          3. Connect your iPhone to your Mac
+          4. Open AltStore and click "Install IPA"
+          5. Select the downloaded .ipa file
+          6. Allow AltStore to access your device
+          7. Trust the developer certificate on your device:
+             - Settings > General > VPN & Device Management
+             - Trust the developer email
+          8. Launch the app from your home screen!
+          
+          ## Method 2: Using Xcode (Requires Developer Account)
+          
+          1. Clone this repository: `git clone https://github.com/yourusername/rpg-game-ios.git`
+          2. Open `RPGGame.xcodeproj` in Xcode
+          3. Select your device in the top left
+          4. Connect your iPhone
+          5. Click the Play button to build and run
+          
+          ## Method 3: Using Sideloadly
+          
+          1. Download [Sideloadly](https://sideloadly.io/)
+          2. Connect your iPhone
+          3. Drag and drop the IPA file onto Sideloadly
+          4. Sign in with your Apple ID (free account works)
+          5. Select your device and click "Start"
+          6. Trust the developer on your device
+          
+          ## Troubleshooting
+          
+          - **Certificate errors**: Re-sign the IPA with your Apple ID
+          - **Device not recognized**: Try unplugging and reconnecting
+          - **Installation fails**: Ensure iOS version is 15.0 or higher
+          - **App crashes on launch**: Check Device Console in Xcode
+          
+          ## Building from Source
+          
+          ```bash
+          git clone https://github.com/yourusername/rpg-game-ios.git
+          cd rpg-game-ios
+          xcodebuild -scheme RPGGame -configuration Release -sdk iphoneos
+          ```
+          
+          ## System Requirements
+          
+          - iOS 15.0 or later
+          - iPhone 6s or later
+          - 200MB free storage
+          
+          Enjoy the game! 🎮
+          EOF
+
+      - name: Upload Instructions
+        uses: actions/upload-artifact@v4
+        with:
+          name: sideload-instructions
+          path: SIDELOAD_INSTRUCTIONS.md
+
+      - name: Create GitHub Release with Instructions
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body_path: SIDELOAD_INSTRUCTIONS.md
+          draft: false
+          prerelease: false
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  XCODE_VERSION: "15.3"
+  RUBY_VERSION: "3.2"
+  IOS_DEPLOYMENT_TARGET: "15.0"
+
+jobs:
+  build:
+    name: Build iOS App
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: Install Xcode
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_15.3.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install dependencies
+        run: |
+          if [ -f Podfile ]; then
+            pod install
+          fi
+
+      - name: Build for iOS (Debug)
+        run: |
+          xcodebuild \
+            -scheme RPGGame \
+            -configuration Debug \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -verbose \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build for iOS (Release)
+        run: |
+          xcodebuild \
+            -scheme RPGGame \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -verbose \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Generate IPA
+        run: |
+          mkdir -p build/ipa
+          xcodebuild \
+            -scheme RPGGame \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -archivePath build/RPGGame.xcarchive \
+            archive
+
+      - name: Create IPA from Archive
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/RPGGame.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath build/ipa
+
+      - name: Create .ipa for sideloading
+        run: |
+          cd build/ipa
+          mkdir -p Payload
+          cp -r RPGGame.app Payload/
+          zip -r -q ../RPGGame-sideload.ipa Payload/
+          cd ../..
+
+      - name: Run Unit Tests
+        run: |
+          xcodebuild \
+            -scheme RPGGame \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            test \
+            -verbose
+
+      - name: Generate Test Report
+        if: always()
+        run: |
+          if [ -f build/Logs/Test/Test.log ]; then
+            echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+            tail -50 build/Logs/Test/Test.log >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
         with:
           name: iOS-build-artifacts
           path: |
