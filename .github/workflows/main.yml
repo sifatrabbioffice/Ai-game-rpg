@@ -36,8 +36,20 @@ jobs:
 
       - name: Build for iOS (Release)
         run: |
+          echo "🔍 Searching for RPGGame.xcodeproj..."
+          # মেইন ফোল্ডার বা সাব-ফোল্ডার যেখানেই হোক .xcodeproj এর সঠিক পাথ খুঁজে বের করবে
+          PROJECT_PATH=$(find . -name "RPGGame.xcodeproj" -type d | head -n 1)
+          
+          if [ -z "$PROJECT_PATH" ]; then
+            echo "❌ Error: RPGGame.xcodeproj could not be found anywhere in the repository!"
+            echo "Please ensure you have committed the actual .xcodeproj bundle."
+            exit 1
+          fi
+          
+          echo "✅ Found project at: $PROJECT_PATH"
+          
           xcodebuild \
-            -project RPGGame.xcodeproj \
+            -project "$PROJECT_PATH" \
             -scheme RPGGame \
             -configuration Release \
             -sdk iphoneos \
@@ -51,10 +63,12 @@ jobs:
         run: |
           mkdir -p artifacts
           APP_PATH=$(find .build/Build/Products/Release-iphoneos -name "RPGGame.app" -type d | head -n 1)
+          
           if [ -z "$APP_PATH" ]; then
             echo "❌ Error: RPGGame.app not found in build directory!"
             exit 1
           fi
+          
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -r -q artifacts/RPGGame-sideload.ipa Payload
